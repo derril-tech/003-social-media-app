@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Heart, MessageCircle } from 'lucide-react'
 import { loadLikeForPhoto, saveLikeForPhoto } from "@/lib/persistence"
+import { useAuthContext } from "@/components/auth-provider"
 
 export type PhotoCardProps = {
   id?: string
@@ -35,6 +36,8 @@ export function PhotoCard({
   createdAt,
   userId,
 }: PhotoCardProps) {
+  const { user } = useAuthContext()
+  
   // Optimistic UI state (local only)
   const [liked, setLiked] = useState<boolean>(false)
   const [likeCount, setLikeCount] = useState<number>(likes)
@@ -46,7 +49,7 @@ export function PhotoCard({
   // Load initial like state
   useEffect(() => {
     if (id) {
-      loadLikeForPhoto(id)
+      loadLikeForPhoto(id, user?.uid)
         .then((savedLike) => {
           if (savedLike !== null) {
             setLiked(savedLike)
@@ -56,7 +59,7 @@ export function PhotoCard({
           console.error('Error loading like state:', error)
         })
     }
-  }, [id])
+  }, [id, user?.uid])
 
   const toggleLike = async () => {
     const nextLiked = !liked
@@ -66,7 +69,7 @@ export function PhotoCard({
     // Persist like state
     if (id) {
       try {
-        await saveLikeForPhoto(id, nextLiked)
+        await saveLikeForPhoto(id, nextLiked, user?.uid)
       } catch (error) {
         console.error('Error saving like:', error)
         // Revert optimistic update on error

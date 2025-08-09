@@ -23,12 +23,20 @@ if (process.env.NEXT_PUBLIC_FIREBASE_API_KEY && process.env.NEXT_PUBLIC_FIREBASE
   auth = getAuth(app);
   db = getFirestore(app);
   googleProvider = new GoogleAuthProvider();
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Firebase initialized successfully');
+  }
 } else {
   // Mock objects for build time
   app = null;
   auth = null;
   db = null;
   googleProvider = null;
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.warn('Firebase not initialized - missing environment variables');
+  }
 }
 
 // Export Firebase services
@@ -37,14 +45,20 @@ export { auth, db, googleProvider };
 // Authentication functions
 export const signInWithGoogle = async () => {
   if (!auth || !googleProvider) {
-    throw new Error('Firebase not initialized');
+    throw new Error('Firebase not initialized. Please check your environment variables.');
   }
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error signing in with Google:', error);
-    throw error;
+    if (error.code === 'auth/popup-closed-by-user') {
+      throw new Error('Sign-in was cancelled');
+    } else if (error.code === 'auth/popup-blocked') {
+      throw new Error('Sign-in popup was blocked. Please allow popups for this site.');
+    } else {
+      throw new Error('Sign-in failed. Please try again.');
+    }
   }
 };
 
