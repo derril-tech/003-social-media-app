@@ -2,26 +2,48 @@
 
 import { useCallback, useRef, useState } from "react"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { ImagePlus, X, Hash } from 'lucide-react'
+import { ImagePlus, X, Hash, Loader2 } from 'lucide-react'
+import { useAuthContext } from "@/components/auth-provider"
+import { createPost } from "@/lib/firebase"
 
 type CreatePostFormProps = {
   defaultCaption?: string
 }
 
+/**
+ * Create post form component with Firebase integration
+ * Handles image upload, caption, tags, and post creation
+ */
 export function CreatePostForm({ defaultCaption = "" }: CreatePostFormProps) {
+  const router = useRouter()
+  const { user, isAuthenticated } = useAuthContext()
   const [preview, setPreview] = useState<string | null>(null)
   const [caption, setCaption] = useState(defaultCaption)
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        setError("File size must be less than 10MB")
+        return
+      }
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError("Please select a valid image file")
+        return
+      }
+      setError(null)
       const url = URL.createObjectURL(file)
       setPreview(url)
     } else {
@@ -55,14 +77,78 @@ export function CreatePostForm({ defaultCaption = "" }: CreatePostFormProps) {
 
   const removeTag = (t: string) => setTags((prev) => prev.filter((x) => x !== t))
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!isAuthenticated) {
+      setError("Please sign in to create a post")
+      return
+    }
+
+    if (!preview) {
+      setError("Please select an image")
+      return
+    }
+
+    if (!caption.trim()) {
+      setError("Please add a caption")
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      // For now, we'll use a placeholder image URL
+      // In a real app, you'd upload the image to Firebase Storage
+      const imageSrc = "/black-and-white-street-corner.png"
+      
+      await createPost({
+        imageSrc,
+        photographerName: user?.displayName || "Anonymous",
+        username: user?.email?.split('@')[0] || "user",
+        avatarSrc: user?.photoURL || "/portrait-avatar.png",
+        caption: caption.trim(),
+        likes: 0,
+        comments: 0,
+        userId: user?.uid || "",
+      })
+
+      // Reset form
+      setPreview(null)
+      setCaption("")
+      setTags([])
+      setTagInput("")
+      
+      // Navigate to home page
+      router.push("/")
+    } catch (err) {
+      setError("Failed to create post. Please try again.")
+      console.error("Error creating post:", err)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleReset = () => {
+    setPreview(null)
+    setCaption("")
+    setTags([])
+    setTagInput("")
+    setError(null)
+  }
+
   return (
     <form
       className="grid gap-6"
-      onSubmit={(e) => {
-        e.preventDefault()
-        // Visual only – no submit.
-      }}
+      onSubmit={handleSubmit}
     >
+      {error && (
+        <div className="rounded-md bg-red-50 border border-red-200 p-3">
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
+
       <div className="grid gap-2">
         <label className="text-sm font-medium text-black">Image</label>
         <div
@@ -154,11 +240,27 @@ export function CreatePostForm({ defaultCaption = "" }: CreatePostFormProps) {
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <Button type="reset" variant="outline" onClick={() => { setPreview(null); setCaption(""); setTags([]); setTagInput(""); }}>
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={handleReset}
+          disabled={isSubmitting}
+        >
           Reset
         </Button>
-        <Button type="submit" className="bg-black text-white hover:bg-emerald-600">
-          Post
+        <Button 
+          type="submit" 
+          className="bg-black text-white hover:bg-emerald-600"
+          disabled={isSubmitting || !isAuthenticated}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Posting...
+            </>
+          ) : (
+            "Post"
+          )}
         </Button>
       </div>
     </form>

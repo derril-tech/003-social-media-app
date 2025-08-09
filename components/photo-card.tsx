@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
@@ -8,8 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Heart, MessageCircle } from 'lucide-react'
-// Future: swap to persistence adapter once enabled
-// import { loadLikeForPhoto, saveLikeForPhoto } from "@/lib/persistence"
+import { loadLikeForPhoto, saveLikeForPhoto } from "@/lib/persistence"
 
 export type PhotoCardProps = {
   id?: string
@@ -20,17 +19,21 @@ export type PhotoCardProps = {
   caption?: string
   likes?: number
   comments?: number
+  createdAt?: Date
+  userId?: string
 }
 
 export function PhotoCard({
   id,
-  imageSrc = "/urban-street-bw.png",
+  imageSrc = "/black-and-white-street-corner.png",
   photographerName = "Jordan Lee",
   username = "jordanlee",
   avatarSrc = "/portrait-avatar.png",
   caption = "Light and shadow can change the mood of an entire street.",
   likes = 128,
   comments = 22,
+  createdAt,
+  userId,
 }: PhotoCardProps) {
   // Optimistic UI state (local only)
   const [liked, setLiked] = useState<boolean>(false)
@@ -38,13 +41,39 @@ export function PhotoCard({
   const [commentCount, setCommentCount] = useState<number>(comments)
   const [commenting, setCommenting] = useState<boolean>(false)
   const [commentText, setCommentText] = useState<string>("")
+  const [imageError, setImageError] = useState<boolean>(false)
 
-  const toggleLike = () => {
+  // Load initial like state
+  useEffect(() => {
+    if (id) {
+      loadLikeForPhoto(id)
+        .then((savedLike) => {
+          if (savedLike !== null) {
+            setLiked(savedLike)
+          }
+        })
+        .catch((error) => {
+          console.error('Error loading like state:', error)
+        })
+    }
+  }, [id])
+
+  const toggleLike = async () => {
     const nextLiked = !liked
     setLiked(nextLiked)
     setLikeCount((c) => (nextLiked ? c + 1 : Math.max(0, c - 1)))
-    // Persist later:
-    // saveLikeForPhoto(id ?? "", nextLiked).catch(() => {})
+    
+    // Persist like state
+    if (id) {
+      try {
+        await saveLikeForPhoto(id, nextLiked)
+      } catch (error) {
+        console.error('Error saving like:', error)
+        // Revert optimistic update on error
+        setLiked(!nextLiked)
+        setLikeCount((c) => (!nextLiked ? c + 1 : Math.max(0, c - 1)))
+      }
+    }
   }
 
   const submitComment = (e: React.FormEvent) => {
@@ -62,12 +91,13 @@ export function PhotoCard({
     <Card className="overflow-hidden border-black/10">
       <CardContent className="p-0">
         <Image
-          src={imageSrc || "/placeholder.svg?height=800&width=1200&query=high-contrast+black+and+white+photo"}
-          alt="Photograph"
+          src={imageError ? "/black-and-white-street-corner.png" : (imageSrc || "/black-and-white-street-corner.png")}
+          alt={`Photograph by ${photographerName}`}
           width={1200}
           height={800}
           className="w-full h-auto object-cover"
           priority={false}
+          onError={() => setImageError(true)}
         />
       </CardContent>
 
